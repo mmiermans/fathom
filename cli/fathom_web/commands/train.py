@@ -167,6 +167,10 @@ def exclude_features(exclude, vector_data):
         default=False,
         is_flag=True,
         help='Hide per-tag diagnostics that may help with ruleset debugging.')
+@option('--debug-feature',
+        type=str,
+        multiple=True,
+        help='Show a feature in per-tag diagnostics. This may help find tags where it has an unexpected value. ')
 @option('--confidence-threshold', '-t',
         default=0.5,
         show_default=True,
@@ -179,7 +183,7 @@ def exclude_features(exclude, vector_data):
         type=str,
         multiple=True,
         help='Exclude a rule while training. This helps with before-and-after tests to see if a rule is effective.')
-def main(training_set, validation_set, ruleset, trainee, training_cache, validation_cache, delay, tabs, show_browser, stop_early, learning_rate, iterations, pos_weight, comment, quiet, confidence_threshold, layers, exclude):
+def main(training_set, validation_set, ruleset, trainee, training_cache, validation_cache, delay, tabs, show_browser, stop_early, learning_rate, iterations, pos_weight, comment, quiet, debug_feature, confidence_threshold, layers, exclude):
     """Compute optimal numerical parameters for a Fathom ruleset.
 
     The usual invocation is something like this::
@@ -218,16 +222,16 @@ def main(training_set, validation_set, ruleset, trainee, training_cache, validat
         if not trainee:
             raise BadOptionUsage('trainee', 'A --trainee ID must be specified when TRAINING_SET_FOLDER or --validation-set are passed a directory.')
 
-    training_data = exclude_features(
-        exclude,
-        make_or_find_vectors(ruleset,
-                             trainee,
-                             training_set,
-                             training_cache,
-                             show_browser,
-                             'training',
-                             delay,
-                             tabs))
+    training_vectors = make_or_find_vectors(ruleset,
+                                            trainee,
+                                            training_set,
+                                            training_cache,
+                                            show_browser,
+                                            'training',
+                                            delay,
+                                            tabs)
+
+    training_data = exclude_features(exclude, training_vectors)
     training_pages = training_data['pages']
     x, y, num_yes, num_prunes = tensors_from(training_pages, shuffle=True)
     num_samples = len(x) + num_prunes
@@ -291,7 +295,9 @@ def main(training_set, validation_set, ruleset, trainee, training_cache, validat
 
     if not quiet:
         print('\nTraining per-tag results:')
-        print_per_tag_report([per_tag_metrics(page, model, confidence_threshold) for page in training_pages])
+        debug_feature_indices = [training_vectors['header']['featureNames'].index(f) for f in debug_feature]
+        print_per_tag_report(
+            [per_tag_metrics(page, model, confidence_threshold, debug_feature_indices) for page in training_pages])
         if validation_set:
             print('\nValidation per-tag results:')
-            print_per_tag_report([per_tag_metrics(page, model, confidence_threshold) for page in validation_pages])
+            print_per_tag_report([per_tag_metrics(page, model, confidence_threshold, debug_feature_indices) for page in validation_pages])

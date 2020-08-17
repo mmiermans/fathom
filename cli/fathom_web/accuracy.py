@@ -33,9 +33,10 @@ def accuracy_per_tag(y, y_pred, cutoff, num_prunes):
         return (successes / number_of_tags), false_positives, false_negatives
 
 
-def per_tag_metrics(page, model, cutoff):
+def per_tag_metrics(page, model, cutoff, feature_indices=None):
     """Return the per-tag numbers to be templated into a human-readable report
     by ``print_per_tag_report``."""
+    feature_indices = feature_indices or []
     # Get scores for all tags:
     inputs, correct_outputs, _, num_prunes = tensors_from([page])
     with torch.no_grad():
@@ -62,6 +63,8 @@ def per_tag_metrics(page, model, cutoff):
                 tag_metric['error_type'] = ''
             tag_metric['score'] = 'pruned' if tag.get('pruned') else score
             tag_metric['markup'] = tag.get('markup', 'Use a newer FathomFox to see markup.')
+            if not tag.get('pruned'):
+                tag_metric['features'] = [tag['features'][i] for i in feature_indices]
             tag_metrics.append(tag_metric)
         else:  # not is_target and not is_error: TNs
             true_negatives += 1
@@ -95,7 +98,7 @@ def print_per_tag_report(metricses):
     template_width_minus_tag = max_filename_len + 2 + 3 + 2 + 3 + 10
     tag_max_width = min(get_terminal_size()[0] - template_width_minus_tag, max_tag_len)
 
-    template = '{file_style}{file: >' + str(max_filename_len) + '}{style_reset}  {tag_style}{tag_and_padding}   {error_type: >2}{style_reset}   {score}'
+    template = '{file_style}{file: >' + str(max_filename_len) + '}{style_reset}  {tag_style}{tag_and_padding}   {error_type: >2}{style_reset}   {score} {tag_style}{features}'
     style_reset = style('', reset=True)
     for metrics in sorted(metricses, key=lambda m: m['filename']):
         first = True
@@ -104,6 +107,10 @@ def print_per_tag_report(metricses):
         any_right = not all(t['error_type'] for t in metrics['tags']) or true_negative_count
         file_color = 'good' if all_right else ('medium' if any_right else 'bad')
         for tag in metrics['tags']:
+            features = tag.get('features', [])
+            if len(features) == 1:
+                features = features[0]
+
             print(template.format(
                 file=metrics['filename'] if first else '',
                 file_style=style('', **FAT_COLORS[file_color], reset=False),
@@ -111,7 +118,8 @@ def print_per_tag_report(metricses):
                 tag_and_padding=fit_unicode(tag['markup'], tag_max_width),
                 tag_style=style('', **THIN_COLORS[not bool(tag['error_type'])], reset=False),
                 error_type=tag['error_type'],
-                score='pruned' if tag['score'] == 'pruned' else thermometer(tag['score'])))
+                score='pruned' if tag['score'] == 'pruned' else thermometer(tag['score']),
+                features = features if features != [] else ''))
             first = False
         if first:
             # There were no targets and no errors, so we didn't print tags.
@@ -122,7 +130,8 @@ def print_per_tag_report(metricses):
                 tag_and_padding=fit_unicode('No targets found.', tag_max_width),
                 tag_style=style('', fg='green', reset=False),
                 error_type='',
-                score=''))
+                score='',
+                features=''))
         else:
             # We printed some tags. Also show the TNs so we get credit for them.
             if true_negative_count:
@@ -136,7 +145,8 @@ def print_per_tag_report(metricses):
                         tag_max_width),
                     tag_style=style('', fg='green', reset=False),
                     error_type='',
-                    score=''))
+                    score='',
+                    features=''))
 
 
 def confidence_interval(success_ratio, number_of_samples):
