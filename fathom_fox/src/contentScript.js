@@ -159,7 +159,6 @@ function vectorizeTab(traineeId) {
     const topNodeStuff = [{
         features: [],
         markup: outerHtml,
-        score: bestFnode.scoreFor(vectorType)
     }];
 
     return {filename: path.substr(path.lastIndexOf('/') + 1),
